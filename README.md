@@ -1,3 +1,7 @@
+> [!CAUTION]  
+> # NOTICE - DO NOT USE
+> This repository has been archived and moved to https://github.com/openrelik/openrelik-workers/
+
 # OpenRelik PhotoRec Worker
 
 This OpenRelik worker utilizes [PhotoRec](https://www.cgsecurity.org/wiki/PhotoRec) to perform file carving and data recovery from various input sources, typically disk images. It aims to recover deleted files or files from corrupted file systems.
