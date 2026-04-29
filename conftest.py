@@ -1,4 +1,4 @@
-# Copyright 2024 Google LLC
+# Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,4 +34,4 @@ def setup_test_environment(monkeypatch):
     """
     monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0") # Dummy URL for testing
     monkeypatch.setenv("CELERY_BROKER_URL", "redis://localhost:6379/0") # For Celery 5+
-    # Add any other environment variables needed for tests globally
+    # Add any other environment variables needed for tests globallytarel@razorcrest:~/openrelik-worker-photorec$
