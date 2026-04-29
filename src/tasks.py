@@ -1,3 +1,17 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import os
 import subprocess
@@ -47,68 +61,67 @@ def command(self, pipe_result: str = None, input_files: list = None, output_path
             logger.error(f"Error creating temp directory {temp_export_dir}: {e}")
             continue
 
-        log_output_file = create_output_file(
-            output_path,
-            display_name=f"photorec_log_{Path(input_file.get('display_name')).name}.txt",
-            extension=".txt", data_type="text/plain",
-        )
-
-        base_command = ["photorec", "/debug", "/log", "/d", str(temp_export_dir), "/cmd", input_file.get("path")]
-
-        options = ["fileopt"]
-        if task_config.get("everything"):
-            options.append("everything,enable")
-            options.append("jpg,disable")
-        elif task_config.get("jpg"):
-            options.append("everything,disable")
-            options.append("jpg,enable")
-        else:
-            options.append("everything,enable")
-            options.append("jpg,disable")
-        options.append("freespace,search")
-        final_command = base_command + [",".join(options)]
-
-        logger.info(f"Running command: {' '.join(final_command)}")
         try:
-            with open(log_output_file.path, "w") as fh:
-                subprocess.run(final_command, stdout=fh, stderr=fh, check=True)
-        except subprocess.CalledProcessError as e:
-            error_message = (f"Photorec command failed with return code {e.returncode}.\n"
-                             f"Stderr: {e.stderr.decode() if e.stderr else 'N/A'}")
-            logger.error(error_message)
+            log_output_file = create_output_file(
+                output_path,
+                display_name=f"photorec_log_{Path(input_file.get('display_name')).name}.txt",
+                extension=".txt", data_type="text/plain",
+            )
+
+            base_command = ["photorec", "/debug", "/log", "/d", str(temp_export_dir), "/cmd", input_file.get("path")]
+
+            options = ["fileopt"]
+            if task_config.get("jpg"):
+                options.append("everything,disable")
+                options.append("jpg,enable")
+            else:
+                options.append("everything,enable")
+                options.append("jpg,disable")
+            options.append("freespace,search")
+            final_command = base_command + [",".join(options)]
+
+            logger.info(f"Running command: {' '.join(final_command)}")
+            try:
+                with open(log_output_file.path, "w") as fh:
+                    subprocess.run(final_command, stdout=fh, stderr=fh, check=True)
+            except subprocess.CalledProcessError as e:
+                error_message = (f"Photorec command failed with return code {e.returncode}.\n"
+                                 f"Stderr: {e.stderr.decode() if e.stderr else 'N/A'}")
+                logger.error(error_message)
+                output_files.append(log_output_file.to_dict())
+                continue
+            except FileNotFoundError:
+                logger.error("Photorec command not found. Is it installed and in the system's PATH?")
+                output_files.append(log_output_file.to_dict())
+                continue
+
             output_files.append(log_output_file.to_dict())
-            continue
-        except FileNotFoundError:
-            logger.error("Photorec command not found. Is it installed and in the system's PATH?")
-            output_files.append(log_output_file.to_dict())
-            continue
 
-        output_files.append(log_output_file.to_dict())
+            found_dirs = list(temp_export_dir.glob("recup_dir.*"))
+            if not found_dirs:
+                logger.warning(f"Photorec ran successfully but no files were recovered from {input_file.get('display_name')}.")
+                meta_summary[input_file.get('display_name')] = "No files recovered."
 
-        found_dirs = list(temp_export_dir.glob("recup_dir.*"))
-        if not found_dirs:
-            logger.warning(f"Photorec ran successfully but no files were recovered from {input_file.get('display_name')}.")
-            meta_summary[input_file.get('display_name')] = "No files recovered."
+            for recup_dir in found_dirs:
+                recovered_count = 0
+                logger.info(f"Processing recovered files in: {recup_dir}")
+                for recovered_file in recup_dir.rglob("*"):
+                    if recovered_file.is_file():
+                        recovered_count += 1
+                        output_file_obj = create_output_file(
+                            output_path, display_name=recovered_file.name,
+                            original_path=str(recovered_file.relative_to(recup_dir)),
+                            data_type="extraction:image_export:file",
+                            source_file_id=input_file.get("id"),
+                        )
+                        recovered_file.rename(output_file_obj.path)
+                        output_files.append(output_file_obj.to_dict())
+                meta_summary[input_file.get('display_name')] = f"Successfully recovered {recovered_count} file(s)."
 
-        for recup_dir in found_dirs:
-            recovered_count = 0
-            logger.info(f"Processing recovered files in: {recup_dir}")
-            for recovered_file in recup_dir.rglob("*"):
-                if recovered_file.is_file():
-                    recovered_count += 1
-                    output_file_obj = create_output_file(
-                        output_path, display_name=recovered_file.name,
-                        original_path=str(recovered_file.relative_to(recup_dir)),
-                        data_type="extraction:image_export:file",
-                        source_file_id=input_file.get("id"),
-                    )
-                    recovered_file.rename(output_file_obj.path)
-                    output_files.append(output_file_obj.to_dict())
-            meta_summary[input_file.get('display_name')] = f"Successfully recovered {recovered_count} file(s)."
-
-        try:
-            shutil.rmtree(temp_export_dir)
-        except OSError as e:
-            logger.error(f"Failed to remove temp directory {temp_export_dir}: {e}")
+        finally:
+            try:
+                shutil.rmtree(temp_export_dir)
+            except OSError as e:
+                logger.error(f"Failed to remove temp directory {temp_export_dir}: {e}")
 
     return create_task_result(output_files=output_files, workflow_id=workflow_id, command=["photorec", "..."], meta={"summary": meta_summary})
